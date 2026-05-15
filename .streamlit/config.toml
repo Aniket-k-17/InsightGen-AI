@@ -1,0 +1,10 @@
+# .streamlit/config.toml
+# Streamlit reads this file automatically on startup
+# It sets the colour theme of the entire app
+
+[theme]
+base                     = "dark"
+primaryColor             = "#4f8ef7"
+backgroundColor          = "#0d0f14"
+secondaryBackgroundColor = "#161b25"
+textColor                = "#e8eaf0"

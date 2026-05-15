@@ -1,0 +1,13 @@
+# requirements.txt
+# This file lists all Python libraries this project needs.
+# Install them all at once by running:
+#   pip install -r requirements.txt
+
+streamlit        # builds the web app UI
+pandas           # works with tables / dataframes
+numpy            # math and number operations
+plotly           # interactive charts
+scikit-learn     # machine learning (anomaly detection)
+openpyxl         # read and write Excel files
+python-dotenv    # reads the .env file for API keys
+requests         # makes HTTP calls to the Groq API

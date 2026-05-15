@@ -1,0 +1,23 @@
+# .streamlit/pages.toml
+# This file tells Streamlit which pages to show in the sidebar
+# and what to call them
+
+[[pages]]
+path = "pages/upload.py"
+name = "📂 Upload"
+
+[[pages]]
+path = "pages/dashboard.py"
+name = "📊 Dashboard"
+
+[[pages]]
+path = "pages/predict.py"
+name = "🤖 ML Predict"
+
+[[pages]]
+path = "pages/chat.py"
+name = "💬 Chat"
+
+[[pages]]
+path = "pages/reports.py"
+name = "📄 Reports"
