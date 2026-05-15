@@ -7,7 +7,7 @@
 [![Groq](https://img.shields.io/badge/AI-Groq%20Llama%203-f55036?logo=meta&logoColor=white)](https://groq.com)
 [![License](https://img.shields.io/badge/License-MIT-2dd4a0)](LICENSE)
 
-**Live Demo:** 🔗 [your-app.streamlit.app](#) ← update this after deploying
+**Live Demo:** 🔗 [insightgen-ai-by-aniket.streamlit.app](https://insightgen-ai-by-aniket.streamlit.app)
 
 ---
 
