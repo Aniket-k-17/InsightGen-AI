@@ -1,189 +1,153 @@
 # core/insight_generator.py
-# This file generates AI business insights about the uploaded data.
-# It tries to use Groq (free AI API). If that fails, it uses statistics instead.
+# Generates AI business insights using Groq's free Llama 3 model.
+# Works locally (.env) and on Streamlit Cloud (st.secrets).
 
-import os          # os lets us read environment variables (like API keys)
-import requests    # requests lets us call web APIs (like sending a web form)
-from dotenv import load_dotenv  # reads the .env file
+import requests
+import os
+import streamlit as st
+from dotenv import load_dotenv
 
-# Load the .env file so os.getenv() can read GROQ_API_KEY
 load_dotenv()
 
-# Read the API key from the .env file
-# os.getenv() returns "" (empty string) if the key is not set
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# Groq API details - these never change
-GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"  # the free Llama 3 model on Groq
-
-
-def call_groq_api(system_message, user_message):
-    """
-    Calls the Groq API and returns the AI's response as text.
-    Returns None if the API call fails for any reason.
-
-    system_message = instructions telling the AI what role to play
-    user_message   = the actual question / data we send
-    """
-
-    # If there is no API key, don't even try to call the API
-    if not GROQ_API_KEY:
-        return None
-
-    # Headers are like metadata sent with the request
-    # Authorization tells the API "here is my key, I am allowed to use this"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type":  "application/json",
-    }
-
-    # The data we send to the API (like a form submission)
-    data = {
-        "model":       GROQ_MODEL,
-        "max_tokens":  600,   # maximum length of the AI's response
-        "temperature": 0.7,   # creativity level (0=robotic, 1=very creative)
-        "messages": [
-            {"role": "system", "content": system_message},
-            {"role": "user",   "content": user_message},
-        ],
-    }
-
+def _get_api_key():
     try:
-        # requests.post() sends data to the API and waits for a response
-        # timeout=30 means give up if no response after 30 seconds
-        response = requests.post(GROQ_URL, headers=headers, json=data, timeout=30)
-
-        # status_code 200 means success
-        if response.status_code == 200:
-            # The API returns JSON - we navigate to the text part
-            ai_text = response.json()["choices"][0]["message"]["content"]
-            return ai_text.strip()
-        else:
-            return None  # something went wrong with the API
-
+        return st.secrets["GROQ_API_KEY"]
     except Exception:
-        return None  # network error or timeout - just return None
+        return os.getenv("GROQ_API_KEY")
 
 
 def generate_insights(df):
     """
-    Main function - generates 5 business insights about the DataFrame.
-    Returns: (insights_text, source)
-    source = "groq" if AI was used, "statistics" if fallback was used
+    Returns (insights_text, source) tuple.
+    source = "groq" if AI was used, "local" if fallback statistics used.
+    This is what upload.py expects.
     """
+    api_key = _get_api_key()
 
-    # Build a text summary of the dataset to send to the AI
-    column_names = ", ".join(df.columns.tolist())
-    shape_info   = f"{df.shape[0]} rows and {df.shape[1]} columns"
-    stats_text   = df.describe().round(2).to_string()
-    sample_rows  = df.head(5).to_csv(index=False)
+    if not api_key:
+        return _local_insights(df), "local"
 
-    # Tell the AI what role to play
-    system_message = (
-        "You are a senior business data analyst. "
-        "Generate exactly 5 clear, specific, actionable business insights. "
-        "Format as: 1. insight  2. insight  etc. "
-        "Always mention column names and actual numbers from the data."
-    )
+    columns     = ", ".join(df.columns.tolist())
+    shape       = f"{df.shape[0]} rows and {df.shape[1]} columns"
+    stats       = df.describe().round(2).to_string()
+    sample_data = df.head(5).to_csv(index=False)
 
-    # The actual data we want insights about
-    user_message = (
-        f"Dataset size: {shape_info}\n"
-        f"Column names: {column_names}\n\n"
-        f"Statistics:\n{stats_text}\n\n"
-        f"First 5 rows:\n{sample_rows}"
-    )
+    prompt = f"""You are a senior business data analyst.
 
-    # Try the Groq API first
-    ai_response = call_groq_api(system_message, user_message)
+Here is a dataset summary:
+- Size: {shape}
+- Columns: {columns}
 
-    if ai_response:
-        return ai_response, "groq"
-    else:
-        # API failed or no key - use statistics instead
-        return generate_statistical_insights(df), "statistics"
+Statistical Summary:
+{stats}
+
+Sample Data:
+{sample_data}
+
+Generate exactly 5 business insights from this dataset.
+Format your response as:
+1. insight here
+2. insight here
+3. insight here
+4. insight here
+5. insight here
+
+Be specific, mention column names and numbers."""
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type":  "application/json"
+    }
+
+    payload = {
+        "model":       "llama-3.3-70b-versatile",
+        "messages":    [{"role": "user", "content": prompt}],
+        "max_tokens":  500,
+        "temperature": 0.7,
+    }
+
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        if response.status_code == 200:
+            text = response.json()["choices"][0]["message"]["content"].strip()
+            return text, "groq"
+        return _local_insights(df), "local"
+
+    except Exception:
+        return _local_insights(df), "local"
 
 
-def generate_statistical_insights(df):
+# Keep old name as alias so nothing else breaks
+def generate_ai_insights(df):
+    text, _ = generate_insights(df)
+    return text
+
+
+def _local_insights(df):
     """
-    Generates insights using only pandas statistics.
-    No internet or API key needed - always works.
+    Pure statistics fallback — no API needed.
     """
     insights = []
+    num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
 
-    # Get lists of column types
-    number_columns = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
-    text_columns   = df.select_dtypes(include=["object"]).columns.tolist()
-
-    # Insight 1 - dataset size
     insights.append(
-        f"1. This dataset has **{df.shape[0]:,} rows** and **{df.shape[1]} columns** "
-        f"({len(number_columns)} numeric, {len(text_columns)} categorical)."
+        f"1. The dataset has {df.shape[0]:,} rows and {df.shape[1]} columns "
+        f"with {len(num_cols)} numeric and {len(cat_cols)} categorical features."
     )
 
-    # Insight 2 - missing values
-    total_missing = int(df.isnull().sum().sum())
-    if total_missing == 0:
-        insights.append("2. ✅ No missing values found. Data quality is excellent.")
+    missing = df.isnull().sum().sum()
+    if missing == 0:
+        insights.append("2. Data quality is excellent — no missing values found across all columns.")
     else:
-        worst_column = df.isnull().sum().idxmax()  # column with most missing
-        worst_pct    = round(df[worst_column].isnull().mean() * 100, 1)
+        worst = df.isnull().sum().idxmax()
         insights.append(
-            f"2. ⚠️ **{total_missing} missing values** found. "
-            f"Column `{worst_column}` has the most gaps ({worst_pct}% missing)."
+            f"2. Data has {missing} missing values total. "
+            f"Column '{worst}' has the most — consider filling or dropping it."
         )
 
-    # Insight 3 - most variable column
-    if number_columns:
-        most_variable = df[number_columns].std().idxmax()  # column with highest std dev
-        col_mean = round(df[most_variable].mean(), 2)
-        col_std  = round(df[most_variable].std(), 2)
+    if num_cols:
+        top = df[num_cols].std().idxmax()
         insights.append(
-            f"3. `{most_variable}` has the highest variability "
-            f"(average = {col_mean}, spread = {col_std}). "
-            "This column has the most inconsistency in the data."
+            f"3. '{top}' shows the highest variability "
+            f"(mean={round(df[top].mean(),2)}, std={round(df[top].std(),2)}). "
+            f"This column likely drives the most change in the dataset."
         )
 
-    # Insight 4 - strongest correlation
-    if len(number_columns) >= 2:
-        corr_matrix = df[number_columns].corr()
+    if len(num_cols) >= 2:
+        corr  = df[num_cols].corr()
+        pairs = []
+        for i in range(len(num_cols)):
+            for j in range(i+1, len(num_cols)):
+                pairs.append((abs(corr.iloc[i,j]), num_cols[i], num_cols[j], corr.iloc[i,j]))
+        if pairs:
+            pairs.sort(reverse=True)
+            _, c1, c2, raw = pairs[0]
+            direction = "positively" if raw > 0 else "negatively"
+            insights.append(
+                f"4. '{c1}' and '{c2}' are strongly {direction} correlated ({round(raw,2)}). "
+                f"They move together — useful for prediction models."
+            )
 
-        # Find the highest correlation pair (not comparing a column with itself)
-        best_value = 0
-        best_col1  = ""
-        best_col2  = ""
-
-        for i in range(len(number_columns)):
-            for j in range(i + 1, len(number_columns)):  # avoid repeats
-                value = corr_matrix.iloc[i, j]
-                if abs(value) > abs(best_value):
-                    best_value = value
-                    best_col1  = number_columns[i]
-                    best_col2  = number_columns[j]
-
-        direction = "positively" if best_value > 0 else "negatively"
+    if cat_cols:
+        cat = cat_cols[0]
+        top = df[cat].value_counts().index[0]
+        pct = round(df[cat].value_counts().iloc[0] / len(df) * 100, 1)
         insights.append(
-            f"4. `{best_col1}` and `{best_col2}` are **{direction} correlated** "
-            f"(r = {round(best_value, 2)}). They tend to move together."
+            f"5. In '{cat}', the most common value is '{top}' "
+            f"appearing in {pct}% of records."
+        )
+    elif num_cols:
+        col = num_cols[0]
+        insights.append(
+            f"5. '{col}' ranges from {round(df[col].min(),2)} to {round(df[col].max(),2)} "
+            f"with a median of {round(df[col].median(),2)}."
         )
 
-    # Insight 5 - most common category or value range
-    if text_columns:
-        col       = text_columns[0]
-        top_value = df[col].value_counts().index[0]
-        top_pct   = round(df[col].value_counts().iloc[0] / len(df) * 100, 1)
-        insights.append(
-            f"5. In `{col}`, the most common value is **'{top_value}'** "
-            f"({top_pct}% of all rows)."
-        )
-    elif number_columns:
-        col = number_columns[0]
-        insights.append(
-            f"5. `{col}` ranges from **{round(df[col].min(), 2)}** "
-            f"to **{round(df[col].max(), 2)}** "
-            f"with a median of **{round(df[col].median(), 2)}**."
-        )
-
-    # Join all insights with a blank line between each
     return "\n\n".join(insights)

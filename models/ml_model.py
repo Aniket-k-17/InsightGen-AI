@@ -1,5 +1,5 @@
 # models/ml_model.py
-# All Machine Learning logic — fully tested and bug-free.
+# All Machine Learning logic. Fully fixed and tested.
 
 import pandas as pd
 import numpy as np
@@ -13,17 +13,17 @@ from sklearn.metrics         import mean_absolute_error, r2_score, accuracy_scor
 
 def prepare_data(df, feature_columns, target_column):
     """
-    Cleans and prepares data for ML:
+    Prepares data for ML:
     1. Drops rows with missing values
-    2. Detects numeric-looking strings ("12.5" → 12.5)
+    2. Converts numeric-looking strings ("12.5") to float
     3. Label-encodes genuine text columns ("Texas" → 0)
-    4. Converts everything to float64 column-by-column (safe, no bulk astype crash)
+    4. Converts each column to float individually — safe, no bulk crash
     """
     data = df[feature_columns + [target_column]].dropna().copy()
 
     if len(data) < 10:
         raise ValueError(
-            f"Only {len(data)} clean rows available after removing missing values. "
+            f"Only {len(data)} clean rows after removing missing values. "
             "Please fill missing values on the Upload page first (need at least 10 rows)."
         )
 
@@ -34,23 +34,25 @@ def prepare_data(df, feature_columns, target_column):
 
     for col in X.columns:
         if X[col].dtype == "object":
-            # Try converting to numeric first — some columns store numbers as strings
+            # Check if it's a numeric-looking string e.g. "100", "12.5"
             converted = pd.to_numeric(X[col], errors="coerce")
             if converted.notna().sum() / len(converted) >= 0.9:
-                # Numeric-looking strings like "12.5" → treat as number
+                # Treat as numeric
                 X[col] = converted.fillna(converted.median())
             else:
-                # Genuine text column → LabelEncode
+                # Genuine text — LabelEncode
                 X[col] = X[col].astype(str).replace("nan", "unknown")
                 enc = LabelEncoder()
                 X[col] = enc.fit_transform(X[col])
                 encoders[col] = enc
 
-        # BUG FIX: convert column to float individually AFTER encoding
-        # Doing X.astype(float) all at once crashes if any text column wasn't encoded yet
-        X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0).astype(float)
+        # Convert each column to float AFTER encoding — never bulk astype
+        try:
+            X[col] = pd.to_numeric(X[col], errors="coerce").fillna(0).astype(float)
+        except Exception:
+            X[col] = 0.0
 
-    # Encode target if it is text
+    # Encode target if text
     if y.dtype == "object":
         y = y.astype(str).replace("nan", "unknown")
         enc = LabelEncoder()
@@ -62,8 +64,8 @@ def prepare_data(df, feature_columns, target_column):
 
 def get_problem_type(df, target_column):
     """
-    Regression     → numeric target with many unique values (price, revenue, etc.)
-    Classification → text target OR numeric with few unique values (0/1, 1-5 rating)
+    Regression     → numeric target with many unique values
+    Classification → text target OR numeric with ≤10 unique values
     """
     target = df[target_column].dropna()
     if target.dtype == "object":
@@ -75,8 +77,8 @@ def get_problem_type(df, target_column):
 
 def train_model(df, feature_columns, target_column, model_name, test_size=0.2):
     """
-    Full training pipeline. Returns a results dict with everything
-    needed for the UI: metrics, charts, feature importance, live prediction.
+    Full training pipeline.
+    Returns results dict with everything needed for UI: metrics, charts, predictions.
     """
     problem_type = get_problem_type(df, target_column)
     X, y, encoders = prepare_data(df, feature_columns, target_column)
@@ -102,7 +104,7 @@ def train_model(df, feature_columns, target_column, model_name, test_size=0.2):
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    # Score and convert predictions to plain Python types (no numpy types)
+    # Score — convert everything to plain Python float (no numpy types)
     if problem_type == "regression":
         score       = round(float(r2_score(y_test, y_pred)) * 100, 1)
         error       = round(float(mean_absolute_error(y_test, y_pred)), 3)
@@ -111,7 +113,7 @@ def train_model(df, feature_columns, target_column, model_name, test_size=0.2):
     else:
         score = round(float(accuracy_score(y_test, y_pred)) * 100, 1)
         error = None
-        # Decode numeric labels back to original text for display in UI
+        # Decode numeric labels back to original text for display
         if "__target__" in encoders:
             enc         = encoders["__target__"]
             y_test_list = list(enc.inverse_transform([int(v) for v in y_test]))
@@ -146,8 +148,8 @@ def train_model(df, feature_columns, target_column, model_name, test_size=0.2):
 
 def predict_single(result, feature_columns, user_inputs):
     """
-    Makes one live prediction from user-entered values.
-    Handles unseen text values safely — no crash.
+    Live prediction from user-entered values.
+    Safely handles unseen text values without crashing.
     """
     row = pd.DataFrame([user_inputs])
 
@@ -155,7 +157,7 @@ def predict_single(result, feature_columns, user_inputs):
         if col in result["encoders"]:
             enc = result["encoders"][col]
             val = str(row[col].iloc[0])
-            # If user picks a value the model never saw — use 0 (safe fallback)
+            # If value was never seen during training — fall back to 0
             if val in enc.classes_:
                 row[col] = float(enc.transform([val])[0])
             else:
@@ -166,7 +168,7 @@ def predict_single(result, feature_columns, user_inputs):
             except (ValueError, TypeError):
                 row[col] = 0.0
 
-    row = row.astype(float)
+    row        = row.astype(float)
     prediction = result["model"].predict(row)[0]
 
     # Decode classification target back to original label
