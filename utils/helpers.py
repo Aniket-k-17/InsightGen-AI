@@ -5,6 +5,8 @@
 
 import streamlit as st
 import pandas as pd
+import os
+from dotenv import load_dotenv
 
 
 def get_dataframe():
@@ -59,3 +61,22 @@ def get_number_columns(df):
 def get_text_columns(df):
     """Returns a list of column names that contain text."""
     return df.select_dtypes(include="object").columns.tolist()
+
+
+def get_api_key():
+    """
+    Retrieves the GROQ_API_KEY securely from either Streamlit secrets
+    (for Streamlit Cloud deployment) or environment variables (for local development).
+    """
+    # Load .env file for local development
+    load_dotenv()
+
+    # Try reading from Streamlit secrets first
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            return st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
+
+    # Fallback to standard environment variables
+    return os.getenv("GROQ_API_KEY", "")

@@ -3,18 +3,12 @@
 # Works locally (.env) and on Streamlit Cloud (st.secrets).
 
 import requests
-import os
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
+from utils.helpers import get_api_key
 
 
 def _get_api_key():
-    try:
-        return st.secrets["GROQ_API_KEY"]
-    except Exception:
-        return os.getenv("GROQ_API_KEY")
+    return get_api_key()
 
 
 def generate_insights(df):

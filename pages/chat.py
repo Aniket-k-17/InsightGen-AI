@@ -8,14 +8,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import streamlit as st
 import requests
-from dotenv import load_dotenv
-from utils.helpers import get_filename, get_number_columns, get_text_columns
-
-# Load the .env file FIRST, before reading any environment variables
-load_dotenv()
+from utils.helpers import get_filename, get_number_columns, get_text_columns, get_api_key
 
 # Now it is safe to read the API key
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEY = get_api_key()
 
 # Groq API settings
 GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
