@@ -15,7 +15,7 @@ GROQ_API_KEY = get_api_key()
 
 # Groq API settings
 GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 # ── Page header ───────────────────────────────────────────────────────────────
 st.title("🤖 AI Chat Assistant")

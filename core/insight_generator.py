@@ -55,7 +55,7 @@ Be specific, mention column names and numbers."""
     }
 
     payload = {
-        "model":       "llama-3.3-70b-versatile",
+        "model":"openai/gpt-oss-20b",
         "messages":    [{"role": "user", "content": prompt}],
         "max_tokens":  500,
         "temperature": 0.7,
